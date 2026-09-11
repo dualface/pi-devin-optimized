@@ -1,8 +1,10 @@
-# pi-devin
+# pi-devin-local
 
 A [Pi](https://pi.dev) package that uses **Devin Local** models inside Pi.
 
 Pi stays the harness. The [Devin CLI](https://docs.devin.ai/cli) owns login and the live model catalog (`devin auth`, `devin models list`). This is not an ACP integration and does not use Zed.
+
+> Fork of [`kashyab12/pi-devin`](https://github.com/kashyab12/pi-devin) (npm `pi-devin`) with fixes that upstream does not carry yet — see [What this fork changes](#what-this-fork-changes). Do not install both: they register the same `devin` provider.
 
 ## Why this exists
 
@@ -29,7 +31,13 @@ The CLI binary is resolved in this order:
 
 ## Install
 
-From this fork:
+From npm (listed in the [package gallery](https://pi.dev/packages)):
+
+```bash
+pi install npm:pi-devin-local
+```
+
+From git:
 
 ```bash
 pi install git:github.com/mizorewww/pi-devin
@@ -41,9 +49,9 @@ Local checkout:
 pi install ~/Developers/pi-devin
 ```
 
-`npm:pi-devin` is the upstream package and does not carry this fork's changes.
-
 Restart Pi or run `/reload`.
+
+Upstream is `npm:pi-devin`; it does not carry this fork's fixes and must not be installed alongside this one.
 
 ## Usage
 
@@ -90,9 +98,36 @@ Commands:
 | Live CLI families (Opus 5, Fable 5, Sol, …) | Hardcoded 11-model cloud allowlist |
 | Completions streamed into Pi tools | An editor host for Devin |
 
+## What this fork changes
+
+Everything upstream does, plus:
+
+- **Reuses a Devin Desktop sign-in.** Desktop keeps its token in the Electron
+  state DB, so the CLI store stayed empty and `/login devin` opened a browser for
+  an account that was already signed in. The store is now seeded from
+  `windsurfAuthStatus` when it is missing.
+- **One model per family, thinking levels via Pi.** `devin/swe-2` + `/thinking max`
+  sends `swe-2-max`; levels a family does not ship are hidden instead of silently
+  falling back to the default variant.
+- **Thinking round-trips.** The server's thinking summary, its sealed signature and
+  the redacted flag are kept on the block and replayed on the next request, like
+  the Devin CLI does, so the model keeps its own prior reasoning.
+- **Request shape aligned with the Devin CLI.** System prompt in the server's
+  system slot, matching sampling configuration, trajectory reference and planner
+  mode, no stray `execution_id`.
+
 ## Publish
 
-This is a standard Pi package (`keywords: ["pi-package"]` + `pi.extensions`). After you push to npm with that keyword, it can show up on [pi.dev/packages](https://pi.dev/packages).
+```bash
+bun run typecheck
+npm publish --access public
+```
+
+This is a standard Pi package (`keywords: ["pi-package"]` + `pi.extensions`).
+Once it is on npm with that keyword it is picked up by the
+[package gallery](https://pi.dev/packages) within minutes — there is no separate
+submission step, and pi has no official namespace for third-party extensions.
+If it does not show up, bump the version and publish again to force re-indexing.
 
 ## License
 
