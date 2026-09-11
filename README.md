@@ -17,7 +17,7 @@ Those models are available through the local Devin CLI. This package uses that C
 ## Requirements
 
 - Pi Coding Agent 0.80+
-- A signed-in [Devin CLI](https://docs.devin.ai/cli) (`devin auth status`)
+- A signed-in [Devin CLI](https://docs.devin.ai/cli) (`devin auth status`), or a signed-in Devin Desktop
 - Node 18+
 
 The CLI binary is resolved in this order:
@@ -29,23 +29,19 @@ The CLI binary is resolved in this order:
 
 ## Install
 
-From git:
+From this fork:
 
 ```bash
-pi install git:github.com/kashyab12/pi-devin
-```
-
-After npm publish:
-
-```bash
-pi install npm:pi-devin
+pi install git:github.com/mizorewww/pi-devin
 ```
 
 Local checkout:
 
 ```bash
-pi install /Users/kashyab/pi-devin
+pi install ~/Developers/pi-devin
 ```
+
+`npm:pi-devin` is the upstream package and does not carry this fork's changes.
 
 Restart Pi or run `/reload`.
 
@@ -53,12 +49,26 @@ Restart Pi or run `/reload`.
 
 ```text
 /login devin
-/model devin/claude-opus-5-high
-/model devin/claude-5-fable-high
-/model devin/gpt-5-6-sol-high
+/model devin/swe-2
+/model devin/claude-opus-5
+/model devin/gpt-5.6-sol
 ```
 
-`/login devin` runs `devin auth login` if `~/.local/share/devin/credentials.toml` is missing. If you already signed in through the Devin CLI or Devin Desktop, that file is reused.
+Models keep their **family id**; thinking levels belong to pi and each level is
+resolved to the matching Devin variant. For SWE-2:
+
+| pi thinking level | model uid sent |
+|---|---|
+| `medium` | `swe-2-medium` |
+| `high` (default) | `swe-2-high` |
+| `max` | `swe-2-max` |
+
+Use `/thinking` or `shift+tab` to change the level; levels a family does not ship
+are hidden, and `Ctrl+S` in `/thinking` saves the startup default. The same
+applies to every other family (`devin/kimi-k3`, `devin/grok-4.6`, …).
+
+`/login devin` seeds `~/.local/share/devin/credentials.toml` from a Devin Desktop
+sign-in you already have, and otherwise runs `devin auth login`.
 
 Commands:
 
