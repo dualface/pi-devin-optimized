@@ -1,5 +1,7 @@
 # pi-devin-local
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 A [Pi](https://pi.dev) package that uses **Devin Local** models inside Pi.
 
 Pi stays the harness. The [Devin CLI](https://docs.devin.ai/cli) owns login and the live model catalog (`devin auth`, `devin models list`). This is not an ACP integration and does not use Zed.
@@ -49,7 +51,7 @@ Local checkout:
 pi install ~/Developers/pi-devin
 ```
 
-Restart Pi or run `/reload`.
+Restart Pi or run `/reload`. The Chinese README is at [README.zh-CN.md](README.zh-CN.md).
 
 Upstream is `npm:pi-devin`; it does not carry this fork's fixes and must not be installed alongside this one.
 
