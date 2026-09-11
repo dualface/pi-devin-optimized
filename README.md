@@ -70,6 +70,12 @@ applies to every other family (`devin/kimi-k3`, `devin/grok-4.6`, …).
 `/login devin` seeds `~/.local/share/devin/credentials.toml` from a Devin Desktop
 sign-in you already have, and otherwise runs `devin auth login`.
 
+Thinking: the server streams a *summary* of the model's reasoning; the full trace
+stays inside the sealed signature and never leaves the server. Pi keeps that
+summary together with its signature and replays both on the next request, exactly
+like the Devin CLI, so the model keeps its own prior reasoning across tool calls
+and turns.
+
 Commands:
 
 - `/devin-status` — CLI path, version, auth
