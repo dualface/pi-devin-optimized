@@ -9,7 +9,7 @@ export interface ContentPart {
 }
 
 export interface ChatHistoryItem {
-  role: "user" | "assistant" | "system" | "tool";
+  role: "user" | "assistant" | "tool";
   content: string | ContentPart[];
   tool_call_id?: string;
   tool_calls?: Array<{ id: string; name: string; arguments: string }>;
@@ -24,6 +24,8 @@ export interface ToolDef {
 }
 
 export interface MappedChat {
+  /** Goes into GetChatMessageRequest.prompt, the server's system slot. */
+  systemPrompt?: string;
   messages: ChatHistoryItem[];
   tools: ToolDef[];
 }
@@ -44,9 +46,6 @@ function userContent(content: Message["content"]): string | ContentPart[] {
 
 export function mapContextToChat(context: Context): MappedChat {
   const messages: ChatHistoryItem[] = [];
-  if (context.systemPrompt) {
-    messages.push({ role: "system", content: context.systemPrompt });
-  }
 
   for (const message of context.messages) {
     if (message.role === "user") {
@@ -110,5 +109,5 @@ export function mapContextToChat(context: Context): MappedChat {
     parameters: tool.parameters,
   }));
 
-  return { messages, tools };
+  return { systemPrompt: context.systemPrompt || undefined, messages, tools };
 }

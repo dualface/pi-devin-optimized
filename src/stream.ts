@@ -27,7 +27,6 @@ import {
 const SOURCE_BY_ROLE: Record<string, number> = {
   user: 1,
   assistant: 2,
-  system: 1,
   tool: 4,
 };
 
@@ -51,40 +50,6 @@ export type CloudChatEvent =
 function normalizeContent(content: string | ContentPart[]): ContentPart[] {
   if (typeof content === "string") return [{ type: "text", text: content }];
   return content;
-}
-
-function collapseSystemIntoUser(messages: ChatHistoryItem[]): ChatHistoryItem[] {
-  const out: ChatHistoryItem[] = [];
-  let pending: string[] = [];
-  const textOf = (content: string | ContentPart[]) =>
-    normalizeContent(content)
-      .filter((part) => part.type === "text" && part.text)
-      .map((part) => part.text as string)
-      .join("\n");
-
-  for (const message of messages) {
-    if (message.role === "system") {
-      const text = textOf(message.content);
-      if (text) pending.push(text);
-      continue;
-    }
-    if (message.role === "user" && pending.length > 0) {
-      const userParts = normalizeContent(message.content);
-      const userText = textOf(userParts);
-      const images = userParts.filter((part) => part.type === "image");
-      out.push({
-        role: "user",
-        content: [{ type: "text", text: `<system>\n${pending.join("\n\n")}\n</system>\n${userText}` }, ...images],
-      });
-      pending = [];
-      continue;
-    }
-    out.push(message);
-  }
-  if (pending.length > 0) {
-    out.push({ role: "user", content: `<system>\n${pending.join("\n\n")}\n</system>` });
-  }
-  return out;
 }
 
 function encodeImageData(img: { mimeType?: string; base64Data?: string }): Buffer {
@@ -133,16 +98,25 @@ function encodeChatMessagePrompt(
   return Buffer.concat(parts);
 }
 
+/** Mirrors the Devin CLI: num_completions / max_tokens / max_newlines plus
+ * temperature / top_k / top_p, and nothing else. */
 function encodeCompletionConfiguration(maxOutputTokens?: number): Buffer {
   return Buffer.concat([
     encodeVarintField(1, 1),
-    encodeVarintField(2, 64_000),
-    encodeVarintField(3, maxOutputTokens ?? 128_000),
-    encodeFixed64Field(5, 0.7),
-    encodeFixed64Field(6, 0.95),
-    encodeVarintField(7, 50),
-    encodeFixed64Field(8, 1.0),
-    encodeFixed64Field(11, 1.0),
+    encodeVarintField(2, maxOutputTokens ?? 128_000),
+    encodeVarintField(3, 400),
+    encodeFixed64Field(5, 1.0),
+    encodeVarintField(7, 40),
+    encodeFixed64Field(8, 0.95),
+  ]);
+}
+
+/** CortexTrajectoryReference: cascade trajectory, user-input step. */
+function encodeTrajectoryReference(trajectoryId: string): Buffer {
+  return Buffer.concat([
+    encodeString(1, trajectoryId),
+    encodeVarintField(3, 4),
+    encodeVarintField(4, 14),
   ]);
 }
 
@@ -159,10 +133,11 @@ function buildGetChatMessageRequest(args: {
   apiKey: string;
   userJwt: string;
   modelUid: string;
+  systemPrompt?: string;
   messages: ChatHistoryItem[];
   tools?: ToolDef[];
   cascadeId: string;
-  promptId: string;
+  trajectoryId: string;
   sessionId: string;
   requestId: bigint;
   triggerId: string;
@@ -175,7 +150,7 @@ function buildGetChatMessageRequest(args: {
     requestId: args.requestId,
     triggerId: args.triggerId,
   });
-  const prompts = collapseSystemIntoUser(args.messages).map((message) =>
+  const prompts = args.messages.map((message) =>
     encodeMessage(
       3,
       encodeChatMessagePrompt(normalizeContent(message.content), SOURCE_BY_ROLE[message.role] ?? 1, {
@@ -187,13 +162,17 @@ function buildGetChatMessageRequest(args: {
   );
   return Buffer.concat([
     encodeMessage(1, metadata),
+    // 2 prompt — the server's system slot, same place the Devin CLI puts its own
+    // system prompt. Collapsing it into the first user turn is not equivalent.
+    ...(args.systemPrompt ? [encodeString(2, args.systemPrompt)] : []),
     ...prompts,
     encodeVarintField(7, 5),
     encodeMessage(8, encodeCompletionConfiguration(args.maxOutputTokens)),
     ...(args.tools ?? []).map((tool) => encodeMessage(10, encodeToolDef(tool))),
+    encodeMessage(15, encodeTrajectoryReference(args.trajectoryId)),
     encodeString(16, args.cascadeId),
+    encodeVarintField(20, 1),
     encodeString(21, args.modelUid),
-    encodeString(22, args.promptId),
   ]);
 }
 
@@ -285,13 +264,13 @@ function decodeUsage(buf: Buffer): CloudChatEvent | null {
   };
 }
 
-const sessionCache = new Map<string, { sessionId: string; cascadeId: string }>();
+const sessionCache = new Map<string, { sessionId: string; cascadeId: string; trajectoryId: string }>();
 
 function sessionIds(apiKey: string, host: string) {
   const key = `${host}\x1f${apiKey}`;
   let ids = sessionCache.get(key);
   if (!ids) {
-    ids = { sessionId: randomUUID(), cascadeId: randomUUID() };
+    ids = { sessionId: randomUUID(), cascadeId: randomUUID(), trajectoryId: randomUUID() };
     sessionCache.set(key, ids);
   }
   return ids;
@@ -301,6 +280,7 @@ async function* streamChatEvents(args: {
   apiKey: string;
   host: string;
   modelUid: string;
+  systemPrompt?: string;
   messages: ChatHistoryItem[];
   tools?: ToolDef[];
   maxOutputTokens?: number;
@@ -313,10 +293,11 @@ async function* streamChatEvents(args: {
     apiKey: args.apiKey,
     userJwt,
     modelUid: args.modelUid,
+    systemPrompt: args.systemPrompt,
     messages: args.messages,
     tools: args.tools,
     cascadeId: ids.cascadeId,
-    promptId: randomUUID(),
+    trajectoryId: ids.trajectoryId,
     sessionId: ids.sessionId,
     requestId: BigInt(Date.now()),
     triggerId: randomUUID(),
@@ -513,6 +494,7 @@ export function streamDevin(
         apiKey,
         host,
         modelUid,
+        systemPrompt: mapped.systemPrompt,
         messages: mapped.messages,
         tools: mapped.tools.length > 0 ? mapped.tools : undefined,
         maxOutputTokens: options?.maxTokens,
