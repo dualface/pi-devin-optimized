@@ -1,6 +1,6 @@
 # pi-devin-local
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [简体中文](README_zh.md)
 
 A [Pi](https://pi.dev) package that uses **Devin Local** models inside Pi.
 
@@ -51,7 +51,7 @@ Local checkout:
 pi install ~/Developers/pi-devin
 ```
 
-Restart Pi or run `/reload`. The Chinese README is at [README.zh-CN.md](README.zh-CN.md).
+Restart Pi or run `/reload`. The Chinese README is at [README_zh.md](README_zh.md) (named without a dot so npm keeps English as the package page default).
 
 Upstream is `npm:pi-devin`; it does not carry this fork's fixes and must not be installed alongside this one.
 
