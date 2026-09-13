@@ -321,6 +321,9 @@ async function* streamChatEvents(args: {
   if (!resp.body) throw new Error("GetChatMessage returned an empty body");
 
   const reader = resp.body.getReader();
+  // reader.closed rejects with the stream's storedError when the socket dies
+  // mid-response; nothing awaits it -> unhandledRejection crashes the process.
+  void reader.closed.catch(() => {});
   const queue: Buffer[] = [];
   let queued = 0;
   let sawEos = false;
@@ -401,7 +404,9 @@ async function* streamChatEvents(args: {
       // ignore
     }
     try {
-      void resp.body?.cancel();
+      // await: on an errored stream cancel() returns a rejected promise;
+      // `void`-ing it escapes the try/catch as an unhandled rejection.
+      await resp.body?.cancel();
     } catch {
       // ignore
     }
