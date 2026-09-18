@@ -83,6 +83,8 @@ pi install ~/Developers/pi-devin
 - `/devin-status` — CLI 路径、版本、认证状态
 - `/devin-refresh` — 重新执行 `devin models list --format json` 拉取目录
 
+扩展会缓存模型目录六小时。缓存可用时 Pi 启动不再等待 Devin CLI；缓存过期后在后台刷新。设置 `PI_OFFLINE=1` 后，启动阶段只使用缓存，不启动 Devin CLI。
+
 ## 这个包是 / 不是什么
 
 | 是 | 不是 |
