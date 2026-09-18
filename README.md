@@ -91,6 +91,8 @@ Commands:
 - `/devin-status` — CLI path, version, auth
 - `/devin-refresh` — reload `devin models list --format json`
 
+The extension caches the model catalog for six hours. A warm cache keeps Pi startup non-blocking; stale catalogs refresh in the background. With `PI_OFFLINE=1`, startup uses the cache without starting the Devin CLI.
+
 ## What this is / is not
 
 | This package | Not this package |

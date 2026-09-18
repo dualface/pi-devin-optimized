@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import {
+  catalogCachePath,
+  isCatalogCacheFresh,
+  readCatalogCache,
+  writeCatalogCache,
+} from "../src/catalog-cache.ts";
+import type { DevinCatalog } from "../src/models.ts";
+
+const catalog: DevinCatalog = {
+  families: [{
+    family_label: "SWE-2",
+    family_uid: "swe-2",
+    slug: "swe-2",
+    variants: [{ model_uid: "swe-2-high", label: "SWE-2 High" }],
+  }],
+};
+
+test("writes and reads a validated catalog atomically", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pi-devin-cache-"));
+  const path = join(directory, "nested", "models.json");
+  writeCatalogCache(catalog, path, 1_000);
+  assert.deepEqual(readCatalogCache(path), { catalog, fetchedAt: 1_000 });
+  assert.equal(JSON.parse(readFileSync(path, "utf8")).version, 1);
+});
+
+test("rejects malformed cache content", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pi-devin-cache-"));
+  const path = join(directory, "models.json");
+  writeFileSync(path, JSON.stringify({ version: 1, fetchedAt: 1_000, catalog: { families: [{}] } }));
+  assert.throws(() => readCatalogCache(path), /Invalid Devin model catalog cache/);
+});
+
+test("checks cache age and future timestamps", () => {
+  const cached = { catalog, fetchedAt: 1_000 };
+  assert.equal(isCatalogCacheFresh(cached, 1_500, 500), true);
+  assert.equal(isCatalogCacheFresh(cached, 1_501, 500), false);
+  assert.equal(isCatalogCacheFresh(cached, 999, 500), false);
+});
+
+test("uses XDG cache directory when configured", () => {
+  assert.equal(catalogCachePath({ XDG_CACHE_HOME: "/cache" }, "/home/test"), "/cache/pi-devin-local/models.json");
+  assert.equal(catalogCachePath({}, "/home/test"), "/home/test/.cache/pi-devin-local/models.json");
+});
