@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   catalogCachePath,
+  isUsableCatalog,
   isCatalogCacheFresh,
   readCatalogCache,
   writeCatalogCache,
@@ -33,6 +34,13 @@ test("rejects malformed cache content", () => {
   const path = join(directory, "models.json");
   writeFileSync(path, JSON.stringify({ version: 1, fetchedAt: 1_000, catalog: { families: [{}] } }));
   assert.throws(() => readCatalogCache(path), /Invalid Devin model catalog cache/);
+});
+
+test("rejects catalogs without usable model families", () => {
+  assert.equal(isUsableCatalog({ families: [] }), false);
+  assert.equal(isUsableCatalog({
+    families: [{ family_label: "Empty", family_uid: "empty", slug: "empty", variants: [] }],
+  }), false);
 });
 
 test("checks cache age and future timestamps", () => {

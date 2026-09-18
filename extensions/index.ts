@@ -5,6 +5,7 @@ import { readDevinDesktopApiKey } from "../src/desktop-auth.js";
 import { whichDevin, devinVersion } from "../src/cli.js";
 import {
   type CachedDevinCatalog,
+  isUsableCatalog,
   isCatalogCacheFresh,
   readCatalogCache,
   writeCatalogCache,
@@ -17,7 +18,7 @@ const PROVIDER_ID = "devin";
 const PLACEHOLDER_BASE_URL = "https://server.codeium.com";
 
 let _pi: ExtensionAPI | null = null;
-let catalogRequest: Promise<DevinCatalog | null> | null = null;
+let catalogRequest: Promise<DevinCatalog> | null = null;
 
 function isOffline(): boolean {
   const value = process.env.PI_OFFLINE?.toLowerCase();
@@ -27,12 +28,13 @@ function isOffline(): boolean {
 function refreshCatalog(pi: ExtensionAPI): Promise<ProviderModelConfig[]> {
   if (!catalogRequest) {
     const pending = loadCliCatalog().then((catalog) => {
-      if (catalog) {
-        try {
-          writeCatalogCache(catalog);
-        } catch (error) {
-          console.warn(`Devin: failed to cache model catalog: ${error instanceof Error ? error.message : String(error)}`);
-        }
+      if (!isUsableCatalog(catalog)) {
+        throw new Error("Devin CLI returned no usable model families");
+      }
+      try {
+        writeCatalogCache(catalog);
+      } catch (error) {
+        console.warn(`Devin: failed to cache model catalog: ${error instanceof Error ? error.message : String(error)}`);
       }
       return catalog;
     });

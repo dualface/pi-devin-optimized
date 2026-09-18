@@ -20,9 +20,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isCatalog(value: unknown): value is DevinCatalog {
-  if (!isRecord(value) || !Array.isArray(value.families)) return false;
-  return value.families.every((family) =>
+export function isUsableCatalog(value: unknown): value is DevinCatalog {
+  if (!isRecord(value) || !Array.isArray(value.families) || value.families.length === 0) return false;
+  return value.families.some((family) => isRecord(family) && Array.isArray(family.variants) && family.variants.length > 0)
+    && value.families.every((family) =>
     isRecord(family)
     && typeof family.family_label === "string"
     && typeof family.family_uid === "string"
@@ -52,7 +53,7 @@ export function readCatalogCache(path: string = catalogCachePath()): CachedDevin
     || parsed.version !== CACHE_VERSION
     || typeof parsed.fetchedAt !== "number"
     || !Number.isFinite(parsed.fetchedAt)
-    || !isCatalog(parsed.catalog)
+    || !isUsableCatalog(parsed.catalog)
   ) {
     throw new Error(`Invalid Devin model catalog cache: ${path}`);
   }
@@ -64,7 +65,7 @@ export function writeCatalogCache(
   path: string = catalogCachePath(),
   fetchedAt: number = Date.now(),
 ): void {
-  if (!isCatalog(catalog)) throw new Error("Refusing to cache an invalid Devin model catalog");
+  if (!isUsableCatalog(catalog)) throw new Error("Refusing to cache an invalid Devin model catalog");
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temporaryPath = `${path}.${process.pid}.${fetchedAt}.tmp`;
   const body: CatalogCacheFile = { version: CACHE_VERSION, fetchedAt, catalog };
