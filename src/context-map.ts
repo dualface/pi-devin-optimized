@@ -1,4 +1,11 @@
-import type { Context, Message, Tool } from "@earendil-works/pi-ai";
+import {
+  collapseSystemMessages,
+  getCurrentSystemPrompt,
+  getCurrentTools,
+  type Message,
+  type Tool,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import { unpackThinkingSignature, type ChatThinking } from "./thinking.js";
 
 export interface ContentPart {
@@ -44,10 +51,14 @@ function userContent(content: Message["content"]): string | ContentPart[] {
   return parts;
 }
 
-export function mapContextToChat(context: Context): MappedChat {
+export function mapContextToChat(context: TranscriptContext): MappedChat {
+  // Devin carries the prompt in its own slot and knows no mid-conversation system
+  // message, so replay the transcript deltas into the leading one first.
+  const transcript = collapseSystemMessages(context);
+  const systemPrompt = getCurrentSystemPrompt(transcript.messages);
   const messages: ChatHistoryItem[] = [];
 
-  for (const message of context.messages) {
+  for (const message of transcript.messages) {
     if (message.role === "user") {
       messages.push({ role: "user", content: userContent(message.content) });
       continue;
@@ -103,11 +114,11 @@ export function mapContextToChat(context: Context): MappedChat {
     }
   }
 
-  const tools: ToolDef[] = (context.tools ?? []).map((tool: Tool) => ({
+  const tools: ToolDef[] = getCurrentTools(transcript.messages).map((tool: Tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
   }));
 
-  return { systemPrompt: context.systemPrompt || undefined, messages, tools };
+  return { systemPrompt: systemPrompt || undefined, messages, tools };
 }
