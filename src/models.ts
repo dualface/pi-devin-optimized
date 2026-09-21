@@ -138,6 +138,12 @@ function familyToModels(family: DevinFamily): ProviderModelConfig[] {
   ];
 }
 
+/**
+ * Last resort only: used when there is no cached catalog and every retry of
+ * `devin models list` failed. Keep the families a session is most likely to be
+ * launched with — a model missing here surfaces as "not found for provider
+ * devin" on that startup.
+ */
 export const FALLBACK_MODELS: ProviderModelConfig[] = [
   {
     id: "claude-opus-5",
@@ -191,6 +197,24 @@ export const FALLBACK_MODELS: ProviderModelConfig[] = [
     input: ["text", "image"],
     cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 },
     contextWindow: 1_000_000,
+    maxTokens: 128_000,
+  },
+  {
+    id: "swe-2",
+    name: "SWE-2",
+    reasoning: true,
+    thinkingLevelMap: {
+      off: null,
+      minimal: null,
+      low: null,
+      medium: "swe-2-medium",
+      high: "swe-2-high",
+      xhigh: null,
+      max: "swe-2-max",
+    },
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 262_000,
     maxTokens: 128_000,
   },
   {

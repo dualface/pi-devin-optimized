@@ -11,6 +11,7 @@ src/credentials.ts    # ~/.local/share/devin/credentials.toml
 src/desktop-auth.ts   # reuse a Devin Desktop sign-in when the CLI store is missing
 src/models.ts         # `devin models list --format json` → ProviderModelConfig[]
 src/catalog-cache.ts  # validated model-catalog cache under the user cache directory
+src/catalog-retry.ts  # bounded retry for a failing `devin models list`
 src/thinking.ts       # thinking summary + sealed signature round-trip
 src/stream.ts         # streamSimple via GetChatMessage (Connect/protobuf)
 src/jwt.ts            # GetUserJwt cache

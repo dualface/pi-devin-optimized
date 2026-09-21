@@ -10,6 +10,7 @@ import {
   readCatalogCache,
   writeCatalogCache,
 } from "../src/catalog-cache.js";
+import { CATALOG_RETRY_ATTEMPTS, CATALOG_RETRY_DELAY_MS, type RetryOptions, withRetry } from "../src/catalog-retry.js";
 import { type DevinCatalog, FALLBACK_MODELS, loadCliCatalog, modelsFromCatalog } from "../src/models.js";
 import { CLIENT_IDE, CLIENT_VERSION } from "../src/metadata.js";
 import { streamDevin } from "../src/stream.js";
@@ -25,18 +26,43 @@ function isOffline(): boolean {
   return value === "1" || value === "true" || value === "yes";
 }
 
-function refreshCatalog(pi: ExtensionAPI): Promise<ProviderModelConfig[]> {
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchCatalogOnce(): Promise<DevinCatalog> {
+  const catalog = await loadCliCatalog();
+  if (!isUsableCatalog(catalog)) {
+    throw new Error("Devin CLI returned no usable model families");
+  }
+  try {
+    writeCatalogCache(catalog);
+  } catch (error) {
+    console.warn(`Devin: failed to cache model catalog: ${describe(error)}`);
+  }
+  return catalog;
+}
+
+/**
+ * One in-flight catalog request at a time. A failed fetch is retried
+ * `CATALOG_RETRY_ATTEMPTS` times, `CATALOG_RETRY_DELAY_MS` apart, so a single
+ * flaky `devin models list` no longer costs the session its real model ids.
+ */
+function refreshCatalog(pi: ExtensionAPI, retry: RetryOptions = {}): Promise<ProviderModelConfig[]> {
   if (!catalogRequest) {
-    const pending = loadCliCatalog().then((catalog) => {
-      if (!isUsableCatalog(catalog)) {
-        throw new Error("Devin CLI returned no usable model families");
-      }
-      try {
-        writeCatalogCache(catalog);
-      } catch (error) {
-        console.warn(`Devin: failed to cache model catalog: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return catalog;
+    const attempts = retry.attempts ?? CATALOG_RETRY_ATTEMPTS;
+    const delayMs = retry.delayMs ?? CATALOG_RETRY_DELAY_MS;
+    const pending = withRetry(fetchCatalogOnce, {
+      ...retry,
+      attempts,
+      delayMs,
+      onAttemptFailed: (error, attempt, attemptsLeft) => {
+        const retryHint = attemptsLeft > 0
+          ? ` Retrying in ${Math.round(delayMs / 1000)}s (${attemptsLeft} left).`
+          : "";
+        console.warn(`Devin: model catalog attempt ${attempt}/${attempts} failed: ${describe(error)}.${retryHint}`);
+        retry.onAttemptFailed?.(error, attempt, attemptsLeft);
+      },
     });
     catalogRequest = pending;
     void pending.finally(() => {
@@ -99,7 +125,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   try {
     cached = readCatalogCache();
   } catch (error) {
-    console.warn(`Devin: failed to read model catalog cache: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`Devin: failed to read model catalog cache: ${describe(error)}`);
   }
   registerDevinProvider(pi, cached ? modelsFromCatalog(cached.catalog) : FALLBACK_MODELS);
 
@@ -107,15 +133,32 @@ export default async function (pi: ExtensionAPI): Promise<void> {
     try {
       if (await ensureCredentials()) {
         if (!cached) {
-          await refreshCatalog(pi);
+          // No usable cache: the fallback list is the only thing standing in for
+          // the real catalog, so wait out the retries before pi resolves --model.
+          try {
+            await refreshCatalog(pi);
+          } catch (error) {
+            console.warn(
+              `Devin: model catalog unavailable after ${CATALOG_RETRY_ATTEMPTS} attempts: ${describe(error)}. `
+              + "Falling back to a small built-in model list; run /devin-refresh once the Devin CLI works again.",
+            );
+          }
         } else if (!isCatalogCacheFresh(cached)) {
-          void refreshCatalog(pi).catch((error) => {
-            console.warn(`Devin: background model catalog refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+          // The cached catalog already carries the real model ids, so refresh it
+          // in the background instead of holding up startup. keepAlive stays off
+          // so a pending retry never delays quitting pi.
+          void refreshCatalog(pi, { keepAlive: false }).catch((error) => {
+            console.warn(`Devin: background model catalog refresh failed: ${describe(error)}. Using the cached catalog.`);
           });
         }
+      } else {
+        console.warn(
+          "Devin: no credentials found (no CLI store, no Devin Desktop sign-in). "
+          + "Run /login devin or `devin auth login` to load the real model catalog.",
+        );
       }
-    } catch {
-      // Cached or fallback models stay registered when credential discovery or a cold refresh fails.
+    } catch (error) {
+      console.warn(`Devin: model catalog startup failed: ${describe(error)}`);
     }
   }
 
@@ -148,7 +191,9 @@ export default async function (pi: ExtensionAPI): Promise<void> {
     description: "Refresh Devin Local model catalog from `devin models list`",
     handler: async (_args, ctx) => {
       try {
-        const models = await refreshCatalog(pi);
+        // A user is watching this one: report the failure instead of sitting
+        // through the startup retry schedule.
+        const models = await refreshCatalog(pi, { attempts: 1 });
         ctx.ui.notify(`Devin: loaded ${models.length} families from the local CLI.`, "info");
       } catch (error) {
         ctx.ui.notify(
